@@ -4,7 +4,7 @@
  * Plugin Name: WP User Blocking
  * Plugin URI: https://openwpclub.com
  * Description: A plugin to block users from entering the website with customizable message and email export/import functionality.
- * Version: 1.1
+ * Version: 1.0.0
  * Author: OpenWPclub.com
  * Author URI: https://openwpclub.com
  */
@@ -22,13 +22,18 @@ class WP_User_Blocking
     add_action('admin_menu', array($this, 'add_admin_menu'));
     add_action('admin_init', array($this, 'register_settings'));
     add_action('wp_enqueue_scripts', array($this, 'enqueue_styles'));
+    register_activation_hook(__FILE__, array($this, 'activate'));
+  }
+
+  public function activate()
+  {
+    $default_message = "Access to this site has been restricted. If you believe this is an error, please contact the site administrator.";
+    add_option('wp_user_blocking_message', $default_message);
   }
 
   public function init()
   {
-    if (!is_admin() && !$this->is_debug_mode()) {
-      add_action('template_redirect', array($this, 'block_users'));
-    }
+    add_action('wp', array($this, 'block_users'));
   }
 
   public function add_admin_menu()
@@ -46,8 +51,10 @@ class WP_User_Blocking
   {
     register_setting('wp_user_blocking_options', 'wp_user_blocking_message');
     register_setting('wp_user_blocking_options', 'wp_user_blocking_emails');
+    register_setting('wp_user_blocking_options', 'wp_user_blocking_ips');
     register_setting('wp_user_blocking_options', 'wp_user_blocking_button_email');
     register_setting('wp_user_blocking_options', 'wp_user_blocking_debug_mode');
+    register_setting('wp_user_blocking_options', 'wp_user_blocking_block_admins');
   }
 
   public function enqueue_styles()
@@ -75,12 +82,20 @@ class WP_User_Blocking
             <td><textarea name="wp_user_blocking_emails" rows="10" cols="50"><?php echo esc_textarea(get_option('wp_user_blocking_emails')); ?></textarea></td>
           </tr>
           <tr valign="top">
+            <th scope="row">Blocked IPs (one per line)</th>
+            <td><textarea name="wp_user_blocking_ips" rows="10" cols="50"><?php echo esc_textarea(get_option('wp_user_blocking_ips')); ?></textarea></td>
+          </tr>
+          <tr valign="top">
             <th scope="row">Button Email</th>
             <td><input type="email" name="wp_user_blocking_button_email" value="<?php echo esc_attr(get_option('wp_user_blocking_button_email')); ?>" /></td>
           </tr>
           <tr valign="top">
             <th scope="row">Debug Mode</th>
-            <td><input type="checkbox" name="wp_user_blocking_debug_mode" value="1" <?php checked(1, get_option('wp_user_blocking_debug_mode'), true); ?> /></td>
+            <td><input type="checkbox" name="wp_user_blocking_debug_mode" value="1" <?php checked(1, $this->is_debug_mode(), true); ?> /> (Allows access to wp-admin)</td>
+          </tr>
+          <tr valign="top">
+            <th scope="row">Block Admins</th>
+            <td><input type="checkbox" name="wp_user_blocking_block_admins" value="1" <?php checked(1, get_option('wp_user_blocking_block_admins'), true); ?> /> (Enable blocking for admin users)</td>
           </tr>
         </table>
         <?php submit_button(); ?>
@@ -101,11 +116,22 @@ class WP_User_Blocking
 
   public function block_users()
   {
-    $user_email = wp_get_current_user()->user_email;
+    $user = wp_get_current_user();
+    $user_email = $user->user_email;
+    $user_ip = $_SERVER['REMOTE_ADDR'];
     $blocked_emails = explode("\n", get_option('wp_user_blocking_emails'));
     $blocked_emails = array_map('trim', $blocked_emails);
+    $blocked_ips = explode("\n", get_option('wp_user_blocking_ips'));
+    $blocked_ips = array_map('trim', $blocked_ips);
+    $block_admins = get_option('wp_user_blocking_block_admins') == 1;
+    $is_admin = in_array('administrator', $user->roles);
+    $is_debug_mode = $this->is_debug_mode();
 
-    if (in_array($user_email, $blocked_emails)) {
+    if ((in_array($user_email, $blocked_emails) || in_array($user_ip, $blocked_ips)) && ($block_admins || !$is_admin)) {
+      if ($is_debug_mode && is_admin()) {
+        // Allow access to wp-admin in debug mode
+        return;
+      }
       $this->display_block_page();
       exit;
     }
@@ -147,10 +173,14 @@ class WP_User_Blocking
 
     </html>
 <?php
+    exit;
   }
 
   public function is_debug_mode()
   {
+    if (defined('WP_USER_BLOCKING_DEBUG') && WP_USER_BLOCKING_DEBUG) {
+      return true;
+    }
     return get_option('wp_user_blocking_debug_mode') == 1;
   }
 }
@@ -217,3 +247,29 @@ function import_blocked_emails()
     wp_die('There was an error uploading the file. Please try again.');
   }
 }
+
+// Additional debugging information
+add_action('wp_footer', function () {
+  $user = wp_get_current_user();
+  $user_email = $user->user_email;
+  $user_ip = $_SERVER['REMOTE_ADDR'];
+  $blocked_emails = explode("\n", get_option('wp_user_blocking_emails'));
+  $blocked_emails = array_map('trim', $blocked_emails);
+  $blocked_ips = explode("\n", get_option('wp_user_blocking_ips'));
+  $blocked_ips = array_map('trim', $blocked_ips);
+  $block_admins = get_option('wp_user_blocking_block_admins') == 1;
+  $is_admin = in_array('administrator', $user->roles);
+  $wp_user_blocking = new WP_User_Blocking();
+
+  echo "<!-- WP User Blocking Debug:\n";
+  echo "Current user email: " . esc_html($user_email) . "\n";
+  echo "Current user IP: " . esc_html($user_ip) . "\n";
+  echo "Blocked emails: " . esc_html(implode(', ', $blocked_emails)) . "\n";
+  echo "Blocked IPs: " . esc_html(implode(', ', $blocked_ips)) . "\n";
+  echo "User should be blocked (email): " . (in_array($user_email, $blocked_emails) ? 'Yes' : 'No') . "\n";
+  echo "User should be blocked (IP): " . (in_array($user_ip, $blocked_ips) ? 'Yes' : 'No') . "\n";
+  echo "User is admin: " . ($is_admin ? 'Yes' : 'No') . "\n";
+  echo "Block admins setting: " . ($block_admins ? 'ON' : 'OFF') . "\n";
+  echo "Debug mode: " . ($wp_user_blocking->is_debug_mode() ? 'ON' : 'OFF') . "\n";
+  echo "-->";
+});
