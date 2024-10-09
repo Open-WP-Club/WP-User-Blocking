@@ -1,0 +1,40 @@
+.wp-user-blocking-page {
+  background-color: white;
+  font-family: Arial, sans-serif;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  margin: 0;
+}
+
+.wp-user-blocking-container {
+  text-align: center;
+  padding: 20px;
+  max-width: 600px;
+}
+
+.wp-user-blocking-logo {
+  max-width: 200px;
+  margin-bottom: 20px;
+}
+
+.wp-user-blocking-message {
+  margin-bottom: 20px;
+  font-size: 18px;
+  line-height: 1.5;
+}
+
+.wp-user-blocking-button {
+  display: inline-block;
+  background-color: #0073aa;
+  color: white;
+  padding: 10px 20px;
+  text-decoration: none;
+  border-radius: 5px;
+  font-size: 16px;
+}
+
+.wp-user-blocking-button:hover {
+  background-color: #005177;
+}
