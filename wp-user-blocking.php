@@ -4,7 +4,7 @@
  * Plugin Name: WP User Blocking
  * Plugin URI: https://openwpclub.com
  * Description: A plugin to block users from entering the website with customizable message and email export/import functionality.
- * Version: 1.0
+ * Version: 1.1
  * Author: OpenWPclub.com
  * Author URI: https://openwpclub.com
  */
@@ -46,7 +46,6 @@ class WP_User_Blocking
   {
     register_setting('wp_user_blocking_options', 'wp_user_blocking_message');
     register_setting('wp_user_blocking_options', 'wp_user_blocking_emails');
-    register_setting('wp_user_blocking_options', 'wp_user_blocking_logo');
     register_setting('wp_user_blocking_options', 'wp_user_blocking_button_email');
     register_setting('wp_user_blocking_options', 'wp_user_blocking_debug_mode');
   }
@@ -74,10 +73,6 @@ class WP_User_Blocking
           <tr valign="top">
             <th scope="row">Blocked Emails (one per line)</th>
             <td><textarea name="wp_user_blocking_emails" rows="10" cols="50"><?php echo esc_textarea(get_option('wp_user_blocking_emails')); ?></textarea></td>
-          </tr>
-          <tr valign="top">
-            <th scope="row">Logo URL</th>
-            <td><input type="text" name="wp_user_blocking_logo" value="<?php echo esc_attr(get_option('wp_user_blocking_logo')); ?>" /></td>
           </tr>
           <tr valign="top">
             <th scope="row">Button Email</th>
@@ -118,7 +113,6 @@ class WP_User_Blocking
 
   public function display_block_page()
   {
-    $logo_url = get_option('wp_user_blocking_logo');
     $message = get_option('wp_user_blocking_message');
     $button_email = get_option('wp_user_blocking_button_email');
 
@@ -135,8 +129,11 @@ class WP_User_Blocking
 
     <body class="wp-user-blocking-page">
       <div class="wp-user-blocking-container">
-        <?php if ($logo_url): ?>
-          <img src="<?php echo esc_url($logo_url); ?>" alt="Logo" class="wp-user-blocking-logo">
+        <?php
+        $site_icon_url = get_site_icon_url(80);
+        if ($site_icon_url):
+        ?>
+          <img src="<?php echo esc_url($site_icon_url); ?>" alt="Site Icon" class="wp-user-blocking-logo">
         <?php endif; ?>
         <div class="wp-user-blocking-message">
           <?php echo wp_kses_post($message); ?>
@@ -186,9 +183,21 @@ function export_blocked_emails()
 
 function import_blocked_emails()
 {
-  if (isset($_FILES['blocked_emails_file'])) {
+  if (isset($_FILES['blocked_emails_file']) && $_FILES['blocked_emails_file']['error'] == UPLOAD_ERR_OK) {
     $file = $_FILES['blocked_emails_file'];
+
+    // Check if the file is a CSV
+    $file_info = pathinfo($file['name']);
+    if ($file_info['extension'] != 'csv') {
+      wp_die('Please upload a CSV file.');
+    }
+
+    // Read the file contents
     $file_contents = file_get_contents($file['tmp_name']);
+    if ($file_contents === false) {
+      wp_die('Unable to read the uploaded file.');
+    }
+
     $emails = explode("\n", $file_contents);
     $emails = array_map('trim', $emails);
     $emails = array_filter($emails);
@@ -204,5 +213,7 @@ function import_blocked_emails()
 
     wp_redirect(admin_url('users.php?page=wp-user-blocking&import=success'));
     exit;
+  } else {
+    wp_die('There was an error uploading the file. Please try again.');
   }
 }
