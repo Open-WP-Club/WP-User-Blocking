@@ -13,6 +13,8 @@ WP User Blocking is a WordPress plugin that allows administrators to restrict ac
 - Export and import blocked email addresses
 - Debug mode for testing
 - wp-config.php debug mode override
+- Bulk actions to block/unblock users
+- User-friendly settings page in WordPress admin
 
 ## Installation
 
@@ -39,10 +41,32 @@ WP User Blocking is a WordPress plugin that allows administrators to restrict ac
 5. **Debug Mode**: Enable to allow access to wp-admin for testing.
 6. **Block Admins**: Enable to block users with administrator roles.
 
-### Exporting and Importing Blocked Emails
+### Blocking/Unblocking Individual Users
 
-- To export: Click the "Export Blocked Emails" button.
-- To import: Choose a CSV file and click the "Import Blocked Emails" button.
+1. Go to the Users page in the WordPress admin.
+2. Hover over a user and click "Block User" or "Unblock User".
+
+### Bulk Blocking/Unblocking Users
+
+1. Go to the Users page in the WordPress admin.
+2. Select multiple users using the checkboxes.
+3. Choose "Block Users" or "Unblock Users" from the Bulk Actions dropdown.
+4. Click "Apply".
+
+### Exporting Blocked Emails
+
+1. Go to Users > User Blocking.
+2. Click the "Export Blocked Emails" button.
+3. A CSV file will be downloaded with all blocked email addresses.
+
+### Importing Blocked Emails
+
+1. Go to Users > User Blocking.
+2. Click "Choose File" under the Import Blocked Emails section.
+3. Select a CSV file containing email addresses to block.
+4. Click the "Import Blocked Emails" button.
+
+Note: The CSV file should have a header row with "Blocked Emails" as the column name. The import function will skip this header row.
 
 ### Debug Mode
 
@@ -67,6 +91,9 @@ A: Currently, the plugin only supports blocking individual IP addresses. IP rang
 
 **Q: What happens if I block my own email or IP?**
 A: If you block your own email or IP, you may lose access to your site. Always keep debug mode on or have an alternate admin account when testing.
+
+**Q: How do I unblock a user?**
+A: You can unblock a user by removing their email from the Blocked Emails list in the plugin settings, or by using the "Unblock User" action on the Users page.
 
 ## Contributing
 
