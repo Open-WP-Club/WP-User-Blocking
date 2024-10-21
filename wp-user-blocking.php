@@ -24,10 +24,12 @@ class WP_User_Blocking
         add_filter('plugin_action_links_' . plugin_basename(__FILE__), array($this, 'add_plugin_action_links'));
         add_filter('user_row_actions', array($this, 'add_user_row_action'), 10, 2);
         add_action('admin_action_block_user', array($this, 'block_user_action'));
+        add_action('admin_action_unblock_user', array($this, 'unblock_user_action'));
         add_filter('bulk_actions-users', array($this, 'add_bulk_actions'));
         add_filter('handle_bulk_actions-users', array($this, 'handle_bulk_actions'), 10, 3);
         add_action('init', array($this, 'add_blocked_role'));
         add_filter('editable_roles', array($this, 'remove_blocked_role_from_list'));
+        add_action('admin_post_import_blocked_emails', array($this, 'import_blocked_emails'));
         register_activation_hook(__FILE__, array($this, 'activate'));
     }
 
@@ -123,6 +125,10 @@ class WP_User_Blocking
 
     public function block_users()
     {
+        if ($this->is_debug_mode()) {
+          return; // Don't block if in debug mode
+        }
+
         $user = wp_get_current_user();
         $user_email = $user->user_email;
         $user_ip = $_SERVER['REMOTE_ADDR'];
@@ -187,13 +193,13 @@ class WP_User_Blocking
         exit;
     }
 
-    public function is_debug_mode()
-    {
-        if (defined('WP_USER_BLOCKING_DEBUG') && WP_USER_BLOCKING_DEBUG) {
-            return true;
-        }
-        return get_option('wp_user_blocking_debug_mode') == 1;
+  public function is_debug_mode()
+  {
+    if (defined('WP_USER_BLOCKING_DEBUG') && WP_USER_BLOCKING_DEBUG) {
+      return true;
     }
+    return get_option('wp_user_blocking_debug_mode') == 1;
+  }
 
     public function add_plugin_action_links($links)
     {
@@ -205,8 +211,14 @@ class WP_User_Blocking
     public function add_user_row_action($actions, $user_object)
     {
         if (current_user_can('manage_options')) {
-            $block_link = wp_nonce_url(admin_url("users.php?action=block_user&user_id={$user_object->ID}"), 'block_user_' . $user_object->ID);
-            $actions['block_user'] = "<a href='{$block_link}' class='block_user'>Block User</a>";
+            $is_blocked = in_array('blocked', $user_object->roles);
+            if ($is_blocked) {
+                $unblock_link = wp_nonce_url(admin_url("users.php?action=unblock_user&user_id={$user_object->ID}"), 'unblock_user_' . $user_object->ID);
+                $actions['unblock_user'] = "<a href='{$unblock_link}' class='unblock_user'>Unblock User</a>";
+            } else {
+                $block_link = wp_nonce_url(admin_url("users.php?action=block_user&user_id={$user_object->ID}"), 'block_user_' . $user_object->ID);
+                $actions['block_user'] = "<a href='{$block_link}' class='block_user'>Block User</a>";
+            }
         }
         return $actions;
     }
@@ -227,26 +239,48 @@ class WP_User_Blocking
         exit;
     }
 
+    public function unblock_user_action()
+    {
+        if (!current_user_can('manage_options')) {
+            wp_die(__('You do not have sufficient permissions to access this page.'));
+        }
+
+        $user_id = isset($_GET['user_id']) ? intval($_GET['user_id']) : 0;
+        if ($user_id && wp_verify_nonce($_GET['_wpnonce'], 'unblock_user_' . $user_id)) {
+            $this->unblock_user($user_id);
+            wp_redirect(admin_url('users.php?unblocked=1'));
+            exit;
+        }
+        wp_redirect(admin_url('users.php?unblocked=0'));
+        exit;
+    }
+
     public function add_bulk_actions($bulk_actions)
     {
         $bulk_actions['block_users'] = __('Block Users', 'wp-user-blocking');
+        $bulk_actions['unblock_users'] = __('Unblock Users', 'wp-user-blocking');
         return $bulk_actions;
     }
 
     public function handle_bulk_actions($redirect_to, $doaction, $user_ids)
     {
-        if ($doaction !== 'block_users') {
-            return $redirect_to;
-        }
-
-        $blocked = 0;
-        foreach ($user_ids as $user_id) {
-            if ($this->block_user($user_id)) {
-                $blocked++;
+        if ($doaction === 'block_users') {
+            $blocked = 0;
+            foreach ($user_ids as $user_id) {
+                if ($this->block_user($user_id)) {
+                    $blocked++;
+                }
             }
+            $redirect_to = add_query_arg('blocked', $blocked, $redirect_to);
+        } elseif ($doaction === 'unblock_users') {
+            $unblocked = 0;
+            foreach ($user_ids as $user_id) {
+                if ($this->unblock_user($user_id)) {
+                    $unblocked++;
+                }
+            }
+            $redirect_to = add_query_arg('unblocked', $unblocked, $redirect_to);
         }
-
-        $redirect_to = add_query_arg('blocked', $blocked, $redirect_to);
         return $redirect_to;
     }
 
@@ -273,101 +307,132 @@ class WP_User_Blocking
         return false;
     }
 
-    public function add_blocked_role()
-    {
-        add_role(
-            'blocked',
-            __('Blocked', 'wp-user-blocking'),
-            array(
-                'read' => false,
-                'edit_posts' => false,
-                'delete_posts' => false,
-            )
-        );
+  private function unblock_user($user_id)
+  {
+    $user = get_userdata($user_id);
+    if ($user) {
+      // Remove the 'blocked' role
+      $user->remove_role('blocked');
+
+      // Assign the default role (usually 'subscriber')
+      $user->set_role(get_option('default_role', 'subscriber'));
+
+      // Remove the email from the blocked list
+      $blocked_emails = get_option('wp_user_blocking_emails', '');
+      $emails = explode("\n", $blocked_emails);
+      $emails = array_filter($emails, function ($email) use ($user) {
+        return trim($email) !== $user->user_email;
+      });
+      $blocked_emails = implode("\n", $emails);
+      update_option('wp_user_blocking_emails', trim($blocked_emails));
+
+      return true;
+    }
+    return false;
+  }
+
+  public function add_blocked_role()
+  {
+    add_role(
+      'blocked',
+      __('Blocked', 'wp-user-blocking'),
+      array(
+        'read' => false,
+        'edit_posts' => false,
+        'delete_posts' => false,
+      )
+    );
+  }
+
+  public function remove_blocked_role_from_list($roles)
+  {
+    if (isset($roles['blocked'])) {
+      unset($roles['blocked']);
+    }
+    return $roles;
+  }
+
+  public function import_blocked_emails()
+  {
+    if (!current_user_can('manage_options')) {
+      wp_die(__('You do not have sufficient permissions to access this page.'));
     }
 
-    public function remove_blocked_role_from_list($roles)
-    {
-        if (isset($roles['blocked'])) {
-            unset($roles['blocked']);
+    if (isset($_FILES['blocked_emails_file']) && $_FILES['blocked_emails_file']['error'] == UPLOAD_ERR_OK) {
+      $file = $_FILES['blocked_emails_file'];
+
+      // Check if the file is a CSV
+      $file_info = pathinfo($file['name']);
+      if ($file_info['extension'] != 'csv') {
+        wp_die('Please upload a CSV file.');
+      }
+
+      // Read the file contents
+      $file_contents = file_get_contents($file['tmp_name']);
+      if ($file_contents === false) {
+        wp_die('Unable to read the uploaded file.');
+      }
+
+      $emails = explode("\n", $file_contents);
+      $emails = array_map('trim', $emails);
+      $emails = array_filter($emails);
+
+      $current_emails = explode("\n", get_option('wp_user_blocking_emails', ''));
+      $current_emails = array_map('trim', $current_emails);
+      $current_emails = array_filter($current_emails);
+
+      $merged_emails = array_unique(array_merge($current_emails, $emails));
+      $merged_emails_string = implode("\n", $merged_emails);
+
+      update_option('wp_user_blocking_emails', trim($merged_emails_string));
+
+      // Block users with imported email addresses
+      $users = get_users();
+      foreach ($users as $user) {
+        if (in_array($user->user_email, $merged_emails)) {
+          $user->set_role('');
+          $user->add_role('blocked');
         }
-        return $roles;
+      }
+
+      wp_redirect(admin_url('users.php?page=wp-user-blocking&import=success'));
+      exit;
+    } else {
+      wp_die('There was an error uploading the file. Please try again.');
     }
+  }
 }
 
 $wp_user_blocking = new WP_User_Blocking();
 
-// Add export/import functionality
+// Add export functionality
 add_action('admin_post_export_blocked_emails', 'export_blocked_emails');
-add_action('admin_post_import_blocked_emails', 'import_blocked_emails');
 
 function export_blocked_emails()
 {
-    $blocked_emails = get_option('wp_user_blocking_emails');
-    $filename = 'blocked_emails_' . date('Y-m-d') . '.csv';
-
-    header('Content-Type: text/csv');
-    header('Content-Disposition: attachment; filename="' . $filename . '"');
-
-    $output = fopen('php://output', 'w');
-    fputcsv($output, array('Blocked Emails'));
-
-    $emails = explode("\n", $blocked_emails);
-    foreach ($emails as $email) {
-        fputcsv($output, array(trim($email)));
-    }
-
-    fclose($output);
-    exit;
-}
-
-function import_blocked_emails()
-{
-  if (isset($_FILES['blocked_emails_file']) && $_FILES['blocked_emails_file']['error'] == UPLOAD_ERR_OK) {
-    $file = $_FILES['blocked_emails_file'];
-
-    // Check if the file is a CSV
-    $file_info = pathinfo($file['name']);
-    if ($file_info['extension'] != 'csv') {
-      wp_die('Please upload a CSV file.');
-    }
-
-    // Read the file contents
-    $file_contents = file_get_contents($file['tmp_name']);
-    if ($file_contents === false) {
-      wp_die('Unable to read the uploaded file.');
-    }
-
-    $emails = explode("\n", $file_contents);
-    $emails = array_map('trim', $emails);
-    $emails = array_filter($emails);
-
-    $current_emails = explode("\n", get_option('wp_user_blocking_emails', ''));
-    $current_emails = array_map('trim', $current_emails);
-    $current_emails = array_filter($current_emails);
-
-    $merged_emails = array_unique(array_merge($current_emails, $emails));
-    $merged_emails_string = implode("\n", $merged_emails);
-
-    update_option('wp_user_blocking_emails', trim($merged_emails_string));
-
-    // Block users with imported email addresses
-    $users = get_users();
-    foreach ($users as $user) {
-      if (in_array($user->user_email, $merged_emails)) {
-        $user->set_role('');
-        $user->add_role('blocked');
-      }
-    }
-
-    wp_redirect(admin_url('users.php?page=wp-user-blocking&import=success'));
-    exit;
-  } else {
-    wp_die('There was an error uploading the file. Please try again.');
+  if (!current_user_can('manage_options')) {
+    wp_die(__('You do not have sufficient permissions to access this page.'));
   }
+
+  $blocked_emails = get_option('wp_user_blocking_emails');
+  $filename = 'blocked_emails_' . date('Y-m-d') . '.csv';
+
+  header('Content-Type: text/csv');
+  header('Content-Disposition: attachment; filename="' . $filename . '"');
+
+  $output = fopen('php://output', 'w');
+  fputcsv($output, array('Blocked Emails'));
+
+  $emails = explode("\n", $blocked_emails);
+  foreach ($emails as $email) {
+    fputcsv($output, array(trim($email)));
+  }
+
+  fclose($output);
+  exit;
 }
 
-// Add admin notice for successful user blocking and email import
+// Add admin notice for successful user blocking, unblocking and email import
 add_action('admin_notices', function () {
   if (isset($_GET['blocked'])) {
     if ($_GET['blocked'] == 1) {
@@ -377,6 +442,17 @@ add_action('admin_notices', function () {
     } else {
       $blocked = intval($_GET['blocked']);
       echo '<div class="notice notice-success is-dismissible"><p>' . $blocked . ' user(s) have been blocked successfully.</p></div>';
+    }
+  }
+
+  if (isset($_GET['unblocked'])) {
+    if ($_GET['unblocked'] == 1) {
+      echo '<div class="notice notice-success is-dismissible"><p>User has been unblocked successfully.</p></div>';
+    } elseif ($_GET['unblocked'] == 0) {
+      echo '<div class="notice notice-error is-dismissible"><p>Failed to unblock user. Please try again.</p></div>';
+    } else {
+      $unblocked = intval($_GET['unblocked']);
+      echo '<div class="notice notice-success is-dismissible"><p>' . $unblocked . ' user(s) have been unblocked successfully.</p></div>';
     }
   }
 
