@@ -95,6 +95,22 @@ A: If you block your own email or IP, you may lose access to your site. Always k
 **Q: How do I unblock a user?**
 A: You can unblock a user by removing their email from the Blocked Emails list in the plugin settings, or by using the "Unblock User" action on the Users page.
 
+<!-- OPENWPCLUB_SPONSORS_START -->
+## Open-source supporters
+
+These companies help keep Open WP Club plugins free and maintained.
+
+[![Open WP Club supporters](https://openwpclub.com/sponsorship/supporters.png)](https://openwpclub.com/sponsors/)
+
+## Sponsored placements
+
+Clearly labelled promotional campaigns, separate from our supporters.
+
+[![Open WP Club sponsored placements](https://openwpclub.com/sponsorship/repos/wp-user-blocking/campaigns.png)](https://openwpclub.com/advertise/)
+
+[Support our work](https://openwpclub.com/sponsors/) · [Discuss a campaign](https://openwpclub.com/advertise/)
+<!-- OPENWPCLUB_SPONSORS_END -->
+
 ## Contributing
 
 We welcome contributions to the WP User Blocking plugin. Please fork the repository and submit a pull request with your changes.
