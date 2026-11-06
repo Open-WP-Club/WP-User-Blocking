@@ -2,6 +2,7 @@
 
 /**
  * Plugin Name: WP User Blocking
+ * Tested up to: 7.1.4
  * Plugin URI: https://openwpclub.com
  * Description: A plugin to block users from entering the website with customizable message
  * Version: 1.1.0
